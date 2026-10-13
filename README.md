@@ -1,108 +1,99 @@
-# Pirates Outlaws (航海奇闻) — Android build with official PC mod support
+# 航海奇闻（Pirates Outlaws）手机版 · 官方 mod 支持版
 
-> This repository provides a **modified game APK** that lets the Android version load
-> **official PC mods from the Steam Workshop**.
+> 本仓库提供一个**改造后的游戏本体 APK**，让手机版能够直接加载 **Steam 创意工坊的官方 PC mod**。
 >
-> **Download**: from the [Releases](https://github.com/caffetsong/andriodPiratesOutlawsModed/releases) page
+> **下载**：请到 [Releases](https://github.com/caffetsong/andriodPiratesOutlawsModed/releases) 页面下载
 >
-> **Checksum** (SHA-256):
->
+> **校验**（SHA-256）：
 > ```
 > 9c7514b2f9b8c484a00a77dba06f6e5d26bfc1c9b23e585583b3e87c7af5ad30
 > ```
 
-- Package: `com.piratesoutlaws.roguelikecard.fabled.cn` (build 1.97)
-- Requirements: **no root**; because the APK is signed with a different key, the official version
-  **must be uninstalled first**
+- 包名：`com.piratesoutlaws.roguelikecard.fabled.cn`（航海奇闻 1.97）
+- 前提：**免 root**；因签名与原版不同，**必须先卸载官方版**再安装本版本
 
 ---
 
-## 1. What's new: official PC mods
+## 一、新增能力：加载官方 PC mod
 
-The stock Android build has **no mod entry point at all** — yet the entire official mod codebase
-is still present in the package: `ModManager`, `ReadTable`, `FindMapping`, `ExtraAssetsPivot`, and
-the `-ModGroup` string constant are all there.
+原版手机版**完全没有 mod 入口** —— 但官方那套 mod 代码其实**一行不少地在包里**：`ModManager`、`ReadTable`、`FindMapping`、`ExtraAssetsPivot`，以及 `-ModGroup` 字符串常量全都保留着。
 
-There is exactly one reason it never works: **nothing ever passes `-ModGroup` to the game**, so
-`UtilsConfig.UseMod` stays `false` and the whole mod pipeline sleeps.
+它用不了的原因只有一个：**没有任何东西给游戏传 `-ModGroup` 参数**，于是 `UtilsConfig.UseMod` 永远是 `false`，整条 mod 管线休眠。
 
-This build feeds that argument in and fixes the loader's Android-specific defects. Everything else
-**runs through the official code paths** — not a single line of game script is changed.
+本版本把这个参数喂进去，并修好官方加载器在安卓上的缺陷；其余**完全走官方逻辑**，一行游戏脚本都不改。
 
-| | Stock Android | This build |
+| 项 | 原版手机版 | 本版本 |
 |---|---|---|
-| Loading Workshop mods | ✗ impossible | ✓ supported; all three directory layouts (`Table/` + `Image/` + `Localization/`) are auto-detected, **no `mods.txt` needed** |
-| ID collisions | — | ✓ the official auto-remapping is reused (cards 9001+, characters 30001+, relics 3001+ …), so mod authors don't need to care |
-| Several mods side by side | — | ✓ same-name sprite collisions are **isolated automatically**: renamed in place, with that mod's own table references rewritten |
-| Card names / ability text | — | ✓ mod localization is merged into the language table |
-| Portraits / card art / ability icons | — | ✓ render correctly |
-| Saves | shared with the base game | ✓ **separate mod save** `save1_mod_<group>.sav`; the original save is untouched |
+| 加载创意工坊 mod | ✗ 不可能 | ✓ 支持；`Table/`＋`Image/`＋`Localization/` 三种目录布局都能自动识别，**不需要 `mods.txt`** |
+| ID 冲突 | — | ✓ 沿用官方的自动重映射（卡 9001+ / 角色 30001+ / 遗物 3001+ …），mod 作者无需关心 |
+| 多 mod 共存 | — | ✓ 同名贴图冲突**自动隔离**：就地重命名，并同步改写该 mod 自己的表引用 |
+| 卡牌名 / 技能描述 | — | ✓ mod 本地化正常合并进语言表 |
+| 立绘 / 卡面 / 技能图标 | — | ✓ 正常绘制 |
+| 存档 | 与原版共用 | ✓ **独立 mod 存档** `save1_mod_<组>.sav`，不污染原存档 |
 
 ---
 
-## 2. Four defects in the **game itself**, fixed along the way
+## 二、顺手修掉的 4 个**游戏自身**的缺陷
 
-None of these come from modding. They are all code that is **fine on PC and fatal on Android** —
-and they are the real reason official mods never worked on mobile.
+这四条都不是改 mod 引入的，而是**「PC 上没事、安卓上必炸」**的代码 —— 也正是官方 mod 在手机版从来用不了的根本原因。
 
-| # | Where | Symptom | What this build does |
+| # | 位置 | 症状 | 本版本的处理 |
 |---|---|---|---|
-| 1 | `System.String.Replace` | `ReadTable.Read` computes its lookup key with `Name.Replace(Extension, "")`, but all 52 call sites pass names **without** an extension → `Replace("")` throws `ArgumentException`: **the game crashes at the splash screen as soon as any mod is installed** | An empty `oldValue` becomes a no-op ("nothing to replace") |
-| 2 | `ModManager.GetModPaths` | It enumerates `…/workshop/content/1046300/` (the PC Workshop folder). On Android that path does not exist, and enumerating it **does not throw — it segfaults**. The crash happens *after* local mods have been queued, which is deeply misleading: the log says "1 mod loaded" while not a single table was read | Takes over this pure path-discovery function and builds a usable mod directory itself |
-| 3 | `ModManager.LoadAllImages` | Same-name sprites are first-come-first-served (`if (!modSpriteDic.ContainsKey(name))`), so two mods shipping the same status icon overwrite each other | Colliding images are **renamed in place** and that mod's own references are rewritten, so each mod keeps its own art |
-| 4 | `ModeView.Open` / `AdventureControl.EndGame` | Giving up inside the tutorial goes through `EndGame`, which **never writes** `Tutorial_AllFinish`; the main menu's `ModeView.Open` sets it to 1 but **never persists it** → the next `LoadGame` resets it to 0 → **re-entering Adventure starts the tutorial again, with no way out** | Calls the game's own `QuickSave` after the original returns, so the flag is actually written to disk |
+| 1 | `System.String.Replace` | `ReadTable.Read` 用 `Name.Replace(Extension, "")` 算查表 key，而 52 个调用点传的都不带扩展名 → `Replace("")` 直接抛 `ArgumentException`：**只要装了任意一个 mod 就崩在启动画面** | 让空 `oldValue` 变成「无可替换」的 no-op |
+| 2 | `ModManager.GetModPaths` | 它去枚举 `…/workshop/content/1046300/`（PC 创意工坊目录）。安卓上该路径不存在，枚举它**不是抛异常，而是直接 SIGSEGV**；崩溃发生在本地 mod 已入列**之后**，所以现象极具误导性：日志显示「已加载 1 个 mod」，实际一张表都没读进来 | 接管这个纯路径发现函数，自己拼出可用的 mod 目录 |
+| 3 | `ModManager.LoadAllImages` | 同名贴图「先到先得」（`if (!modSpriteDic.ContainsKey(name))`），两个 mod 提供的同名状态图标会互相覆盖 | 冲突图**就地重命名**并改写该 mod 自己的引用，各留各的图 |
+| 4 | `ModeView.Open` / `AdventureControl.EndGame` | 教程里点「放弃」走的是 `EndGame`，它**从不写** `Tutorial_AllFinish`；而主界面的 `ModeView.Open` 会把它置 1 却**没有落盘** → 回主界面后被存档冲回 0 → **再进冒险又从头进教程，出不来** | 在原函数返回后调用游戏自己的 `QuickSave`，让这个标记真正落盘 |
 
-> Defect 3 exists on PC as well (it is the game's own design); this build fixes it too.
+> 第 3 条在 PC 端同样存在（属游戏自身设计），本版本顺带修好了。
 
 ---
 
-## 3. Optional features
+## 三、新增的可选功能
 
-| Feature | Description | Toggle (default) |
+| 功能 | 说明 | 开关（默认） |
 |---|---|---|
-| **Skip shuffle animation** | The shuffle animation and its 2-second wait are removed when the draw pile runs out, **while the card-moving logic is left completely untouched** (the original method still runs; only the presentation layer is dropped). Sound is kept | `skip_shuffle=1` in `<mod>/pomod.cfg` or `<files>/pomod.cfg` (default **off**) |
-| **Battle log** | `<files>/battle.log`: battle header plus card add/remove, relics, card plays, fight-data reads/writes and condition attachments, each line stamped with **seconds since the battle started** and flushed immediately | disabled by `<files>/no_battle_log` (default **on**) |
-| **Cross-mod mechanic isolation** | Fixes "another mod's ability executing on your hero": measured with a non-Mage hero, the Mage's element-settlement chain ran and inserted its own card into your hand | disabled by `<files>/no_mod_filter` (**default on**) |
-| **No gallery pollution** | Mod images live in a media-scanned directory yet never show up in the gallery | automatic |
+| **跳过洗牌动画** | 抽牌堆耗尽时的洗牌动画与 2 秒空等被去除，**但搬牌逻辑一行不改**（原方法照跑，只摘掉表现层），音效保留 | `<mod>/pomod.cfg` 或 `<files>/pomod.cfg` 里写 `skip_shuffle=1`（默认**关**） |
+| **战斗日志** | `<files>/battle.log`：开战环境头 + 加/删卡 + 遗物 + 用卡 + 战斗数据读写 + 条件挂载，每行带**相对开战的秒数**且即时落盘 | `<files>/no_battle_log` 关闭（默认开） |
+| **跨 mod 机制隔离** | 修正「别人家的技能在你的英雄身上执行」：实测用法师以外的英雄时，法师的元素结算链会运行，并把它自己的卡塞进你手里 | `<files>/no_mod_filter` 关闭（**默认开**） |
+| **相册零污染** | mod 图片放在媒体扫描目录，却不会出现在相册里 | 自动 |
 
 ---
 
-## 4. Installation
+## 四、安装
 
-### 1. Uninstall the official version
+### 1. 卸载官方版
 
-The signatures differ, so it **cannot be installed over the top**. Uninstalling wipes local
-progress; back up
-`Android/data/com.piratesoutlaws.roguelikecard.fabled.cn/files/save1china.sav` first if that matters.
+签名不同，**不能覆盖安装**。卸载会清掉本地进度；在意的话先备份
+`Android/data/com.piratesoutlaws.roguelikecard.fabled.cn/files/save1china.sav`。
 
-### 2. Install this build
+### 2. 安装本版本
 
-Install the APK downloaded from Releases.
+直接安装 `dist/pirates_outlaws_modded.apk`。
 
-### 3. Add mods
+### 3. 放置 mod
 
-Copy a Workshop mod folder (containing `Table/` + `Image/` + `Localization/`) to **any** of the
-locations below; the loader discovers them automatically:
+把创意工坊的 mod 目录（形如 `Table/` + `Image/` + `Localization/`）放到下面**任一**位置，装载器会自动发现：
 
 ```
-/sdcard/Android/media/com.piratesoutlaws.roguelikecard.fabled.cn/<mod name>/
+/sdcard/Android/media/com.piratesoutlaws.roguelikecard.fabled.cn/<mod 名>/
 ```
 
----
 
-## 5. What this build does **not** include
-
-- **No mods.** This APK only turns the game into one that *can* load mods; mod files are supplied separately.
-- **No changes to game values, rules or balance.** Every change is limited to "letting mods load" plus the four defect fixes above.
-- No changes related to ads or in-app purchases.
 
 ---
 
-## 6. Known limitations
+## 五、本版本**不包含**什么
+- **不含任何 mod**。这个 APK 只是把游戏改造成「能加载 mod」，mod 文件需要另外放置。
+- **不修改任何游戏数值、规则与平衡**。所有改动只涉及「让 mod 能被加载」与上述 4 个缺陷修复。
+- 不含广告 / 内购相关的任何改动。
 
-1. **Self-signed**: cannot be installed over the official version, and official-account features are unavailable.
-2. **The mobile build ships fewer assets than PC**: `event_images_6`, some `heroposNN` files and `StreamingAssets/ExtraAssets` are missing. Mods referencing them will show missing art.
-3. **Mod authors may hard-code runtime IDs**: one measured mod's start event contains `AddHideRelics("9112")` — a **runtime number** (the correct form is `ModRelicID(9001)`). Under a different mod set such hard-coding can point at completely unrelated content; this is a mod-side issue and worth reporting to the author.
-4. **Cross-mod synergies are isolated**: the default isolation ("a mod's ability only executes on that mod's own character") also blocks deliberately designed cross-mod interactions (none have been observed so far).
+---
+
+## 六、已知限制
+
+1. **自签名**：无法覆盖安装官方版，也无法使用官方账号相关功能。
+2. **手机版资源比 PC 少**：缺少 `event_images_6`、部分 `heroposNN` 与 `StreamingAssets/ExtraAssets`。引用了这些资源的 mod 会缺图。
+3. **mod 作者可能硬编码运行时 ID**：实测某 mod 的开局事件里写着 `AddHideRelics("9112")` 这种**运行时编号**（正确写法是 `ModRelicID(9001)`）。在别人的 mod 组合下，这类硬编码可能指向完全不相干的内容 —— 属 mod 侧问题，建议反馈给作者。
+4. **跨 mod 联动会被隔离**：本版本默认按「某个 mod 的技能只在它自己的角色身上执行」隔离，这会同时屏蔽作者有意设计的跨 mod 联动（目前未见此类设计）。
 
 ---
