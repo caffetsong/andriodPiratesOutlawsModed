@@ -5,24 +5,28 @@
 > **下载**：请到 [Releases](https://github.com/caffetsong/andriodPiratesOutlawsModed/releases) 页面下载
 >
 
-- 前提：备份好原存档
-
 ---
 
 ## 安装
 
 1. 备份原版存档
-2. 将原版存档移动到mod版
-3. 把创意工坊的 mod 目录（形如 `Table/` + `Image/` + `Localization/`）放到下面**任一**位置，
+```
+/storage/emulated/0/Android/data/com.piratesoutlaws.roguelikecard.fabled.cn/files/save1china.sav
+```
+2. 将原版存档移动到 mod 版
+```
+/storage/emulated/0/Android/data/com.piratesoutlaws.roguelikecard.fabled.md/files/save1china.sav
+```
+3. 把创意工坊的 mod 放到以下路径
 
 ```
-/sdcard/Android/media/com.piratesoutlaws.roguelikecard.fabled.md/<mod 名>/
+/storage/emulated/0/Android/data/com.piratesoutlaws.roguelikecard.fabled.md/files/mod/
 ```
 
 
 
 ---
 
-本版本**不含任何 mod**。这个 APK 只是把游戏改造成「能加载 mod」，mod 文件需要自行准备，比如将steam创意工坊
+本版本**不含任何 mod**。这个 APK 只是把游戏改造成「能加载 mod」，mod 文件需要自行准备，比如steam创意工坊
 
 本版本**包含大量bug**
